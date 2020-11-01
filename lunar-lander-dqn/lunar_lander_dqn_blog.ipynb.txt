@@ -1,0 +1,603 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "lunar_lander_dqn_blog.ipynb",
+      "provenance": []
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "k92d7ArAo7yY",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "!pip install box2d"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "M2IVzBLdp94_",
+        "colab_type": "text"
+      },
+      "source": [
+        "Do the necessary imports"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "lBSkLbxxpCaP",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "import tensorflow as tf\n",
+        "import gym\n",
+        "import os\n",
+        "import random\n",
+        "\n",
+        "from tensorflow.keras.models import Sequential, load_model\n",
+        "from tensorflow.keras.layers import Dense\n",
+        "from tensorflow.keras.regularizers import l2\n",
+        "\n",
+        "import numpy as np\n",
+        "import scipy\n",
+        "import uuid\n",
+        "import shutil\n",
+        "\n",
+        "import pandas as pd\n",
+        "import matplotlib.pyplot as plt\n",
+        "%matplotlib inline\n",
+        "\n",
+        "import keras.backend as K"
+      ],
+      "execution_count": 2,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "IsdcFIIyp_vV",
+        "colab_type": "text"
+      },
+      "source": [
+        "Create the environment"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "A9Foa-LPpF-R",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "env = gym.make(\"LunarLander-v2\")\n",
+        "\n",
+        "print(f\"Input: {env.observation_space}\")\n",
+        "print(f\"Output: {env.action_space}\")"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "mwJ3OdvrqBqd",
+        "colab_type": "text"
+      },
+      "source": [
+        "Create the loss function"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "FLtVTauvpIpz",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def masked_huber_loss(mask_value, clip_delta):\n",
+        "  def f(y_true, y_pred):\n",
+        "    error = y_true - y_pred\n",
+        "    cond  = K.abs(error) < clip_delta\n",
+        "    mask_true = K.cast(K.not_equal(y_true, mask_value), K.floatx())\n",
+        "    masked_squared_error = 0.5 * K.square(mask_true * (y_true - y_pred))\n",
+        "    linear_loss  = mask_true * (clip_delta * K.abs(error) - 0.5 * (clip_delta ** 2))\n",
+        "    huber_loss = tf.where(cond, masked_squared_error, linear_loss)\n",
+        "    return K.sum(huber_loss) / K.sum(mask_true)\n",
+        "  f.__name__ = 'masked_huber_loss'\n",
+        "  return f"
+      ],
+      "execution_count": 4,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "V0-3xMqyqDTb",
+        "colab_type": "text"
+      },
+      "source": [
+        "Create the model"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "S8vAmL0CpKNg",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "input_shape = (9,) # 8 variables in the environment + the fraction finished we add ourselves\n",
+        "outputs = 4\n",
+        "\n",
+        "def create_model(learning_rate, regularization_factor):\n",
+        "  model = Sequential([\n",
+        "    Dense(64, input_shape=input_shape, activation=\"relu\", kernel_regularizer=l2(regularization_factor)),\n",
+        "    Dense(64, activation=\"relu\", kernel_regularizer=l2(regularization_factor)),\n",
+        "    Dense(64, activation=\"relu\", kernel_regularizer=l2(regularization_factor)),\n",
+        "    Dense(outputs, activation='linear', kernel_regularizer=l2(regularization_factor))\n",
+        "  ])\n",
+        "\n",
+        "  optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)\n",
+        "  model.compile(optimizer=optimizer, loss=masked_huber_loss(0.0, 1.0))\n",
+        "  \n",
+        "  return model"
+      ],
+      "execution_count": 5,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "ZhVvagxGqFTW",
+        "colab_type": "text"
+      },
+      "source": [
+        "Define functions to get the Q values"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "E1uotz6_pMOJ",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def get_q_values(model, state):\n",
+        "  input = state[np.newaxis, ...]\n",
+        "  return model.predict(input)[0]\n",
+        "\n",
+        "def get_multiple_q_values(model, states):\n",
+        "  return model.predict(states)"
+      ],
+      "execution_count": 6,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "60TF0WtwqIFx",
+        "colab_type": "text"
+      },
+      "source": [
+        "Select actions using the Q values"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "Kq1az4aOpNsy",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def select_action_epsilon_greedy(q_values, epsilon):\n",
+        "  random_value = random.uniform(0, 1)\n",
+        "  if random_value < epsilon: \n",
+        "    return random.randint(0, len(q_values) - 1)\n",
+        "  else:\n",
+        "    return np.argmax(q_values)\n",
+        "\n",
+        "def select_best_action(q_values):\n",
+        "  return np.argmax(q_values)"
+      ],
+      "execution_count": 7,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "LaIPmcU_qKOP",
+        "colab_type": "text"
+      },
+      "source": [
+        "Define state transitions and the replay buffer\n"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "g7qO1Tx_pu77",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "class StateTransition():\n",
+        "\n",
+        "  def __init__(self, old_state, action, reward, new_state, done):\n",
+        "    self.old_state = old_state\n",
+        "    self.action = action\n",
+        "    self.reward = reward\n",
+        "    self.new_state = new_state\n",
+        "    self.done = done\n",
+        "\n",
+        "class ReplayBuffer():\n",
+        "  current_index = 0\n",
+        "\n",
+        "  def __init__(self, size = 10000):\n",
+        "    self.size = size\n",
+        "    self.transitions = []\n",
+        "\n",
+        "  def add(self, transition):\n",
+        "    if len(self.transitions) < self.size: \n",
+        "      self.transitions.append(transition)\n",
+        "    else:\n",
+        "      self.transitions[self.current_index] = transition\n",
+        "      self.__increment_current_index()\n",
+        "\n",
+        "  def length(self):\n",
+        "    return len(self.transitions)\n",
+        "\n",
+        "  def get_batch(self, batch_size):\n",
+        "    return random.sample(self.transitions, batch_size)\n",
+        "\n",
+        "  def __increment_current_index(self):\n",
+        "    self.current_index += 1\n",
+        "    if self.current_index >= self.size - 1: \n",
+        "      self.current_index = 0"
+      ],
+      "execution_count": 8,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "SBcwVp5wqOQF",
+        "colab_type": "text"
+      },
+      "source": [
+        "Calculate the target values"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "l1NsR1ScpPeh",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def calculate_target_values(model, target_model, state_transitions, discount_factor):\n",
+        "  states = []\n",
+        "  new_states = []\n",
+        "  for transition in state_transitions:\n",
+        "    states.append(transition.old_state)\n",
+        "    new_states.append(transition.new_state)\n",
+        "\n",
+        "  states = np.array(states)\n",
+        "  new_states = np.array(new_states)\n",
+        "\n",
+        "  q_values = get_multiple_q_values(model, states)\n",
+        "  q_values_target_model = get_multiple_q_values(target_model, states)\n",
+        "\n",
+        "  q_values_new_state = get_multiple_q_values(model, new_states)\n",
+        "  q_values_new_state_target_model = get_multiple_q_values(target_model, new_states)\n",
+        "  \n",
+        "  targets = []\n",
+        "  for index, state_transition in enumerate(state_transitions):\n",
+        "    best_action = select_best_action(q_values_new_state[index])\n",
+        "    best_action_next_state_q_value = q_values_new_state_target_model[index][best_action]\n",
+        "    \n",
+        "    if state_transition.done:\n",
+        "      target_value = state_transition.reward\n",
+        "    else:\n",
+        "      target_value = state_transition.reward + discount_factor * best_action_next_state_q_value\n",
+        "\n",
+        "    target_vector = [0, 0, 0, 0]\n",
+        "    target_vector[state_transition.action] = target_value\n",
+        "    targets.append(target_vector)\n",
+        "\n",
+        "  return np.array(targets)"
+      ],
+      "execution_count": 9,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "e_Ijg8pQqQ2K",
+        "colab_type": "text"
+      },
+      "source": [
+        "Train the model on a batch"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "OseIiOXApTFu",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def train_model(model, states, targets):\n",
+        "  model.fit(states, targets, epochs=1, batch_size=len(targets), verbose=0) "
+      ],
+      "execution_count": 10,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "Hr7PS5hQqTax",
+        "colab_type": "text"
+      },
+      "source": [
+        "Make a copy of a model"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "FYwWNig1pU15",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "def copy_model(model):\n",
+        "  backup_file = 'backup_'+str(uuid.uuid4())\n",
+        "  model.save(backup_file)\n",
+        "  new_model = load_model(backup_file, custom_objects={ 'masked_huber_loss': masked_huber_loss(0.0, 1.0) })\n",
+        "  shutil.rmtree(backup_file)\n",
+        "  return new_model"
+      ],
+      "execution_count": 11,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "1kdauAPkqXo_",
+        "colab_type": "text"
+      },
+      "source": [
+        "Log the results"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "cblpQ9dcpXL4",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "class AverageRewardTracker():\n",
+        "  current_index = 0\n",
+        "\n",
+        "  def __init__(self, num_rewards_for_average=100):\n",
+        "    self.num_rewards_for_average = num_rewards_for_average\n",
+        "    self.last_x_rewards = []\n",
+        "\n",
+        "  def add(self, reward):\n",
+        "    if len(self.last_x_rewards) < self.num_rewards_for_average: \n",
+        "      self.last_x_rewards.append(reward)\n",
+        "    else:\n",
+        "      self.last_x_rewards[self.current_index] = reward\n",
+        "      self.__increment_current_index()\n",
+        "\n",
+        "  def __increment_current_index(self):\n",
+        "    self.current_index += 1\n",
+        "    if self.current_index >= self.num_rewards_for_average: \n",
+        "      self.current_index = 0\n",
+        "\n",
+        "  def get_average(self):\n",
+        "    return np.average(self.last_x_rewards)\n",
+        "\n",
+        "\n",
+        "class FileLogger():\n",
+        "\n",
+        "  def __init__(self, file_name='progress.log'):\n",
+        "    self.file_name = file_name\n",
+        "    self.clean_progress_file()\n",
+        "\n",
+        "  def log(self, episode, steps, reward, average_reward):\n",
+        "    f = open(self.file_name, 'a+')\n",
+        "    f.write(f\"{episode};{steps};{reward};{average_reward}\\n\")\n",
+        "    f.close()\n",
+        "\n",
+        "  def clean_progress_file(self):\n",
+        "    if os.path.exists(self.file_name):\n",
+        "      os.remove(self.file_name)\n",
+        "    f = open(self.file_name, 'a+')\n",
+        "    f.write(\"episode;steps;reward;average\\n\")\n",
+        "    f.close()"
+      ],
+      "execution_count": 12,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "l9JKVlzZqag7",
+        "colab_type": "text"
+      },
+      "source": [
+        "Set the hyperparameters"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "ARAFflXHpZOI",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "replay_buffer_size = 200000\n",
+        "learning_rate = 0.001\n",
+        "regularization_factor = 0.001\n",
+        "training_batch_size = 128\n",
+        "training_start = 256\n",
+        "max_episodes = 10000\n",
+        "max_steps = 1000\n",
+        "target_network_replace_frequency_steps = 1000\n",
+        "model_backup_frequency_episodes = 100\n",
+        "starting_epsilon = 1.0\n",
+        "minimum_epsilon = 0.01\n",
+        "epsilon_decay_factor_per_episode = 0.995\n",
+        "discount_factor = 0.99\n",
+        "train_every_x_steps = 4"
+      ],
+      "execution_count": 13,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "lpS1QOcMqclU",
+        "colab_type": "text"
+      },
+      "source": [
+        "The main loop :D"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "iKtEYyHApcUu",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "replay_buffer = ReplayBuffer(replay_buffer_size)\n",
+        "model = create_model(learning_rate, regularization_factor)\n",
+        "target_model = copy_model(model)\n",
+        "epsilon = starting_epsilon\n",
+        "step_count = 0\n",
+        "average_reward_tracker = AverageRewardTracker(100)\n",
+        "file_logger = FileLogger()\n",
+        "\n",
+        "for episode in range(max_episodes):\n",
+        "  print(f\"Starting episode {episode} with epsilon {epsilon}\")\n",
+        "\n",
+        "  episode_reward = 0\n",
+        "  state = env.reset()\n",
+        "  fraction_finished = 0.0\n",
+        "  state = np.append(state, fraction_finished)\n",
+        "\n",
+        "  first_q_values = get_q_values(model, state)\n",
+        "  print(f\"Q values: {first_q_values}\")\n",
+        "  print(f\"Max Q: {max(first_q_values)}\")\n",
+        "\n",
+        "  for step in range(1, max_steps + 1):\n",
+        "    step_count += 1\n",
+        "    q_values = get_q_values(model, state)\n",
+        "    action = select_action_epsilon_greedy(q_values, epsilon)\n",
+        "    new_state, reward, done, info = env.step(action)\n",
+        "    \n",
+        "    fraction_finished = (step + 1) / max_steps\n",
+        "    new_state = np.append(new_state, fraction_finished)\n",
+        "    \n",
+        "    episode_reward += reward\n",
+        "\n",
+        "    if step == max_steps:\n",
+        "      print(f\"Episode reached the maximum number of steps. {max_steps}\")\n",
+        "      done = True\n",
+        "\n",
+        "    state_transition = StateTransition(state, action, reward, new_state, done)\n",
+        "    replay_buffer.add(state_transition)\n",
+        "\n",
+        "    state = new_state\n",
+        "\n",
+        "    if step_count % target_network_replace_frequency_steps == 0:\n",
+        "      print(\"Updating target model\")\n",
+        "      target_model = copy_model(model)\n",
+        "\n",
+        "    if replay_buffer.length() >= training_start and step_count % train_every_x_steps == 0:\n",
+        "      batch = replay_buffer.get_batch(batch_size=training_batch_size)\n",
+        "      targets = calculate_target_values(model, target_model, batch, discount_factor)\n",
+        "      states = np.array([state_transition.old_state for state_transition in batch])\n",
+        "      train_model(model, states, targets)\n",
+        "\n",
+        "    if done:\n",
+        "      break\n",
+        "\n",
+        "  average_reward_tracker.add(episode_reward)\n",
+        "  average = average_reward_tracker.get_average()\n",
+        "\n",
+        "  print(f\"episode {episode} finished in {step} steps with reward {episode_reward}. Average reward over last 100: {average}\")\n",
+        "  file_logger.log(episode, step, episode_reward, average)\n",
+        "\n",
+        "  if episode != 0 and episode % model_backup_frequency_episodes == 0:\n",
+        "    backup_file = f\"model_{episode}\"\n",
+        "    print(f\"Backing up model to {backup_file}\")\n",
+        "    model.save(backup_file)\n",
+        "\n",
+        "  epsilon *= epsilon_decay_factor_per_episode\n",
+        "  epsilon = max(minimum_epsilon, epsilon)"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "markdown",
+      "metadata": {
+        "id": "ndo2rPdwqf-h",
+        "colab_type": "text"
+      },
+      "source": [
+        "Visualize the results"
+      ]
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "b12sEbFypgGO",
+        "colab_type": "code",
+        "colab": {}
+      },
+      "source": [
+        "data = pd.read_csv(file_logger.file_name, sep=';')\n",
+        "\n",
+        "plt.figure(figsize=(20,10))\n",
+        "plt.plot(data['average'])\n",
+        "plt.plot(data['reward'])\n",
+        "plt.title('Reward')\n",
+        "plt.ylabel('Reward')\n",
+        "plt.xlabel('Episode')\n",
+        "plt.legend(['Average reward', 'Reward'], loc='upper right')\n",
+        "plt.show()"
+      ],
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
