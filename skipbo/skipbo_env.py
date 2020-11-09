@@ -52,21 +52,24 @@ class SkipboEnv(MultiAgentEnv):
                 self.done = True
                 agents[0].done(observation, accumulated_rewards[0])
                 agents[1].done(observation, accumulated_rewards[1])
-                print(f"Game finished. {agents[0].name}: {self.game.get_remaining_skipbo_cards(0)}, {agents[1].name}: {self.game.get_remaining_skipbo_cards(1)}")
+                print(f"Game {options['episode']} finished. {agents[0].name}: {self.game.get_remaining_skipbo_cards(0)}, {agents[1].name}: {self.game.get_remaining_skipbo_cards(1)}")
             elif remaining_skipbo_cards[1] == 0:
                 accumulated_rewards[0] -= 10
                 accumulated_rewards[1] += 10
                 self.done = True
                 agents[0].done(observation, accumulated_rewards[0])
                 agents[1].done(observation, accumulated_rewards[1])
-                print(f"Game finished. {agents[0].name}: {self.game.get_remaining_skipbo_cards(0)}, {agents[1].name}: {self.game.get_remaining_skipbo_cards(1)}")
+                print(f"Game {options['episode']} finished. {agents[0].name}: {self.game.get_remaining_skipbo_cards(0)}, {agents[1].name}: {self.game.get_remaining_skipbo_cards(1)}")
             elif could_draw_cards:
                 available_actions = self.__get_available_actions(self.game, self.game.current_player)
             else:
+                # Game finished because there are no more drawable cards
                 self.done = True
+                accumulated_rewards[0] -= 10
+                accumulated_rewards[1] -= 10
                 agents[0].done(observation, accumulated_rewards[0])
                 agents[1].done(observation, accumulated_rewards[1])
-                print(f"Game finished. {agents[0].name}: {self.game.get_remaining_skipbo_cards(0)}, {agents[1].name}: {self.game.get_remaining_skipbo_cards(1)}")
+                print(f"Game {options['episode']} finished. {agents[0].name}: {self.game.get_remaining_skipbo_cards(0)}, {agents[1].name}: {self.game.get_remaining_skipbo_cards(1)}")
 
     def __get_available_actions(self, game, player):
         return [self.convert_action_to_rl_notation(x) for x in game.get_available_actions(player)]
@@ -98,6 +101,7 @@ class SkipboEnv(MultiAgentEnv):
         192-211: Positions containing a 10 card
         212-230: Positions containing a 11 card
         231-249: Positions containing a 12 card
+        250: Remaining playable cards
         """
         other_player = 0 if player == 1 else 1
 
@@ -107,6 +111,7 @@ class SkipboEnv(MultiAgentEnv):
         observation.append(len(game.player_skipbo_stacks[other_player]))
         for i in range(13):
             observation.extend(self.__get_array_of_positions_containing_card(player, i, game))
+        observation.append(len(self.game.cards) + len(self.game.discarded))
 
         return observation
 

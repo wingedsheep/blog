@@ -24,6 +24,7 @@ class DqnAgent(Agent):
         self.training_start = parameters.training_start
         self.training_batch_size = parameters.training_batch_size
         self.discount_factor = parameters.discount_factor
+        self.backup_frequency_steps = parameters.backup_frequency_steps
         self.previous_observation = None
         self.previous_action = None
         self.replay_buffer = ReplayBuffer(parameters.replay_buffer_size)
@@ -64,6 +65,11 @@ class DqnAgent(Agent):
             print(self.name, "Updating target model")
             self.target_model = ModelManager.copy_model(self.model)
 
+        if self.step_count != 0 and self.step_count % self.backup_frequency_steps == 0:
+            backup_file = f"model_{self.name}_{self.step_count}"
+            print(f"Backing up model to {backup_file}")
+            self.model.save(backup_file)
+
         if self.replay_buffer.length() >= self.training_start:
             batch = self.replay_buffer.get_batch(batch_size=self.training_batch_size)
             targets = self.calculate_target_values(batch)
@@ -84,6 +90,7 @@ class DqnAgent(Agent):
 
         targets = []
         for index, state_transition in enumerate(state_transitions):
+            # TODO Pick best action only from available actions
             best_action = QFunctions.select_best_action(q_values_new_state[index])
             best_action_next_state_q_value = q_values_new_state_target_model[index][best_action]
 

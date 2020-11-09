@@ -10,3 +10,4 @@ class DqnAgentParameters:
         self.training_batch_size = dictionary["training_batch_size"]
         self.training_start = dictionary["training_start"]
         self.discount_factor = dictionary["discount_factor"]
+        self.backup_frequency_steps = dictionary["backup_frequency_steps"]

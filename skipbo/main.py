@@ -6,7 +6,7 @@ from skipbo.skipbo_env import SkipboEnv
 learning_rate = 0.001
 regularization_factor = 0.001
 
-model1 = ModelManager.create_model(250, 80, learning_rate, regularization_factor)
+model1 = ModelManager.create_model(251, 80, learning_rate, regularization_factor)
 parameters1 = DqnAgentParameters({
     "starting_epsilon": 1.0,
     "epsilon_decay": 0.995,
@@ -16,11 +16,12 @@ parameters1 = DqnAgentParameters({
     "target_network_replace_frequency_steps": 1000,
     "training_batch_size": 128,
     "training_start": 256,
-    "discount_factor": 0.99
+    "discount_factor": 0.99,
+    "backup_frequency_steps": 2000
 })
 agent1 = DqnAgent("Emily", model1, parameters1)
 
-model2 = ModelManager.create_model(250, 80, learning_rate, regularization_factor)
+model2 = ModelManager.create_model(251, 80, learning_rate, regularization_factor)
 parameters2 = DqnAgentParameters({
     "starting_epsilon": 1.0,
     "epsilon_decay": 0.995,
@@ -30,10 +31,11 @@ parameters2 = DqnAgentParameters({
     "target_network_replace_frequency_steps": 1000,
     "training_batch_size": 128,
     "training_start": 256,
-    "discount_factor": 0.99
+    "discount_factor": 0.99,
+    "backup_frequency_steps": 2000
 })
 agent2 = DqnAgent("James", model2, parameters2)
 
 environment = SkipboEnv()
-for i in range(1000):
-    environment.play([agent1, agent2], [])
+for i in range(10000):
+    environment.play([agent1, agent2], {"episode": i})
