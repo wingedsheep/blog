@@ -22,9 +22,10 @@ class SkipboEnv(MultiAgentEnv):
     def play(self, agents, options):
         observation, available_actions = self.reset()
         accumulated_rewards = [0, 0]
+
         while not self.done:
             agent = agents[self.game.current_player]
-            action = agent.action(observation, available_actions, accumulated_rewards[self.game.current_player])
+            action = agent.action(observation, available_actions, accumulated_rewards[self.game.current_player], None)
             accumulated_rewards[self.game.current_player] = 0
 
             game_action = self.convert_action_from_rl_notation(action)
@@ -32,6 +33,7 @@ class SkipboEnv(MultiAgentEnv):
             # self.game.visualize()
             # print(f"Available actions {list(map(lambda x: self.convert_action_from_rl_notation(x), available_actions))}.")
             # print(f"Action taken {game_action}, by player {self.game.current_player}")
+            # print(f"Cards in game: {self.game.cards_in_game()}")
 
             prev_remaining_skipbo_cards = [self.game.get_remaining_skipbo_cards(0),
                                            self.game.get_remaining_skipbo_cards(1)]

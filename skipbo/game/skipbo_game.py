@@ -37,7 +37,7 @@ class SkipBoGame:
         self.cards.extend([Card(0) for _ in range(18)])
 
         for i in range(1, 13):
-            self.cards.extend([Card(i) for _ in range(18)])
+            self.cards.extend([Card(i) for _ in range(12)])
 
         self.shuffle()
 
@@ -140,6 +140,36 @@ class SkipBoGame:
                     return card_to_play.card_type - 1 == top_of_stack.actual_value
 
         return False
+
+    def cards_in_game(self):
+        cards = 0
+        cards += len(self.cards)
+        cards += len(self.discarded)
+        cards += len(self.player_skipbo_stacks[0])
+        cards += len(self.player_skipbo_stacks[1])
+        cards += 1 if self.player_hands[0][0] is not None else 0
+        cards += 1 if self.player_hands[0][1] is not None else 0
+        cards += 1 if self.player_hands[0][2] is not None else 0
+        cards += 1 if self.player_hands[0][3] is not None else 0
+        cards += 1 if self.player_hands[0][4] is not None else 0
+        cards += 1 if self.player_hands[1][0] is not None else 0
+        cards += 1 if self.player_hands[1][1] is not None else 0
+        cards += 1 if self.player_hands[1][2] is not None else 0
+        cards += 1 if self.player_hands[1][3] is not None else 0
+        cards += 1 if self.player_hands[1][4] is not None else 0
+        cards += len(self.player_stacks[0][0])
+        cards += len(self.player_stacks[0][1])
+        cards += len(self.player_stacks[0][2])
+        cards += len(self.player_stacks[0][3])
+        cards += len(self.player_stacks[1][0])
+        cards += len(self.player_stacks[1][1])
+        cards += len(self.player_stacks[1][2])
+        cards += len(self.player_stacks[1][3])
+        cards += len(self.center_stacks[0])
+        cards += len(self.center_stacks[1])
+        cards += len(self.center_stacks[2])
+        cards += len(self.center_stacks[3])
+        return cards
 
     def __top_of_stack(self, stack):
         if len(stack) == 0:
