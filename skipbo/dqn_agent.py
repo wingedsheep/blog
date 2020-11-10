@@ -66,7 +66,7 @@ class DqnAgent(Agent):
             self.target_model = ModelManager.copy_model(self.model)
 
         if self.step_count != 0 and self.step_count % self.backup_frequency_steps == 0:
-            backup_file = f"model_{self.name}_{self.step_count}"
+            backup_file = f"models/{self.name}/{self.step_count}.h5"
             print(f"Backing up model to {backup_file}")
             self.model.save(backup_file)
 
