@@ -24,9 +24,12 @@ class SkipboEnv(MultiAgentEnv):
         accumulated_rewards = [0, 0]
 
         while not self.done:
-            agent = agents[self.game.current_player]
-            action = agent.action(observation, available_actions, accumulated_rewards[self.game.current_player], None)
-            accumulated_rewards[self.game.current_player] = 0
+            player = self.game.current_player
+            agent = agents[player]
+            action = agent.action(observation, available_actions, accumulated_rewards[player], None)
+
+            # Reset accumulated rewards for current player
+            accumulated_rewards[player] = 0
 
             game_action = self.convert_action_from_rl_notation(action)
 
@@ -40,8 +43,14 @@ class SkipboEnv(MultiAgentEnv):
             could_draw_cards = self.game.play_card(game_action[0], game_action[1])
             remaining_skipbo_cards = [self.game.get_remaining_skipbo_cards(0), self.game.get_remaining_skipbo_cards(1)]
 
+            # observation for the new player
             observation = self.__get_observation(self.game, self.game.current_player)
 
+            # small penalty for finishing the turn by putting a card on player stacks
+            if game_action[1] >= 4:
+                accumulated_rewards[player] -= 0.05
+
+            # points for playing skipbo cards
             accumulated_rewards[0] += prev_remaining_skipbo_cards[0] - remaining_skipbo_cards[0]
             accumulated_rewards[1] += prev_remaining_skipbo_cards[1] - remaining_skipbo_cards[1]
 
@@ -61,6 +70,7 @@ class SkipboEnv(MultiAgentEnv):
                 agents[1].done(observation, accumulated_rewards[1])
                 print(f"Game {options['episode']} finished. {agents[0].name}: {self.game.get_remaining_skipbo_cards(0)}, {agents[1].name}: {self.game.get_remaining_skipbo_cards(1)}")
             elif could_draw_cards:
+                # Available actions for the new player
                 available_actions = self.__get_available_actions(self.game, self.game.current_player)
             else:
                 # Game finished because there are no more drawable cards
@@ -107,11 +117,11 @@ class SkipboEnv(MultiAgentEnv):
 
         observation = []
         observation.append(1 if game.current_player == player else 0)
-        observation.append(len(game.player_skipbo_stacks[player]))
-        observation.append(len(game.player_skipbo_stacks[other_player]))
+        observation.append(len(game.player_skipbo_stacks[player]) / 30.0)  # Normalized player skipbo cards
+        observation.append(len(game.player_skipbo_stacks[other_player]) / 30.0)  # Normalized other player skipbo cards
         for i in range(13):
             observation.extend(self.__get_array_of_positions_containing_card(player, i, game))
-        observation.append(len(self.game.cards) + len(self.game.discarded))
+        observation.append(len(self.game.cards) + len(self.game.discarded) / 92.0)  # Normalized number of cards left
 
         return observation
 
@@ -136,37 +146,50 @@ class SkipboEnv(MultiAgentEnv):
         """
         other_player = 0 if game.current_player == 1 else 1
         result = []
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_skipbo_stacks[current_player]),
-                                             False) == card else 0)
+
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_skipbo_stacks[current_player]), False) == card else 0)
+
         result.append(1 if self.__card_value(game.player_hands[current_player][0], False) == card else 0)
         result.append(1 if self.__card_value(game.player_hands[current_player][1], False) == card else 0)
         result.append(1 if self.__card_value(game.player_hands[current_player][2], False) == card else 0)
         result.append(1 if self.__card_value(game.player_hands[current_player][3], False) == card else 0)
         result.append(1 if self.__card_value(game.player_hands[current_player][4], False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][0]),
-                                             False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][1]),
-                                             False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][2]),
-                                             False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][3]),
-                                             False) == card else 0)
-        result.append(
-            1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[0]), True) == card else 0)
-        result.append(
-            1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[1]), True) == card else 0)
-        result.append(
-            1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[2]), True) == card else 0)
-        result.append(
-            1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[3]), True) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_skipbo_stacks[other_player]),
-                                             False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][0]),
-                                             False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][1]),
-                                             False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][2]),
-                                             False) == card else 0)
-        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][3]),
-                                             False) == card else 0)
+
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][0]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][1]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][2]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][3]), False) == card else 0)
+
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][0][1:]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][1][1:]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][2][1:]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][3][1:]), False) == card else 0)
+
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][0][2:]), False) == card else 0)
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][1][2:]), False) == card else 0)
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][2][2:]), False) == card else 0)
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[current_player][3][2:]), False) == card else 0)
+
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[0]), True) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[1]), True) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[2]), True) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.center_stacks[3]), True) == card else 0)
+
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_skipbo_stacks[other_player]), False) == card else 0)
+
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][0]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][1]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][2]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][3]), False) == card else 0)
+
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][0][1:]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][1][1:]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][2][1:]), False) == card else 0)
+        result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][3][1:]), False) == card else 0)
+
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][0][2:]), False) == card else 0)
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][1][2:]), False) == card else 0)
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][2][2:]), False) == card else 0)
+        # result.append(1 if self.__card_value(self.__get_top_card_from_stack(game.player_stacks[other_player][3][2:]), False) == card else 0)
+
         return result

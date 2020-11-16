@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 from tensorflow.python.keras import Sequential
 
@@ -27,34 +29,46 @@ class DqnAgent(Agent):
         self.backup_frequency_steps = parameters.backup_frequency_steps
         self.previous_observation = None
         self.previous_action = None
+        self.previous_allowed_actions = None
         self.replay_buffer = ReplayBuffer(parameters.replay_buffer_size)
         self.step_count = 0
+        self.episode_reward = 0
 
     def action(self, observation, allowed_actions, reward, extra):
         if self.previous_observation is not None:
-            if reward > 0:
-                print(f"{self.name} got a reward of {reward}.")
-            self.process_state_transition(observation, reward, False)
+            if reward != 0:
+                # print(f"{self.name} got a reward of {reward}.")
+                self.episode_reward += reward
+            self.process_state_transition(observation, allowed_actions, reward, False)
 
         q_values = QFunctions.get_q_values(self.model, observation)
         action = QFunctions.select_action_epsilon_greedy(q_values, self.current_epsilon, allowed_actions)
         self.previous_observation = observation
         self.previous_action = action
+        self.previous_allowed_actions = allowed_actions
         self.step_count += 1
         return action
 
     def done(self, final_observation, reward):
-        self.process_state_transition(self.previous_observation, reward, True)
+        if reward != 0:
+            self.episode_reward += reward
+            # print(f"{self.name} got a reward of {reward}.")
+        print(f"{self.name} got a total reward of {self.episode_reward}.")
+        self.process_state_transition(self.previous_observation, [], reward, True)
         self.current_epsilon *= self.epsilon_decay_factor_per_episode
         self.current_epsilon = max(self.minimum_epsilon, self.current_epsilon)
+        self.reset_after_episode()
 
     def reset_after_episode(self):
         self.previous_observation = None
         self.previous_action = None
+        self.previous_allowed_actions = None
+        self.episode_reward = 0
 
-    def process_state_transition(self, observation, reward, done):
+    def process_state_transition(self, observation, allowed_actions, reward, done):
         state_transition = StateTransition(
             self.previous_observation,
+            allowed_actions,
             self.previous_action,
             reward,
             observation,
@@ -90,13 +104,11 @@ class DqnAgent(Agent):
 
         targets = []
         for index, state_transition in enumerate(state_transitions):
-            # TODO Pick best action only from available actions
-            best_action = QFunctions.select_best_action(q_values_new_state[index])
-            best_action_next_state_q_value = q_values_new_state_target_model[index][best_action]
-
             if state_transition.done:
                 target_value = state_transition.reward
             else:
+                best_action = QFunctions.select_best_action(q_values_new_state[index], state_transition.allowed_actions)
+                best_action_next_state_q_value = q_values_new_state_target_model[index][best_action]
                 target_value = state_transition.reward + self.discount_factor * best_action_next_state_q_value
 
             target_vector = [0] * 80    # TODO replace by non-hardcoded

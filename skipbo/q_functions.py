@@ -16,8 +16,10 @@ class QFunctions:
             return allowed_actions[selected_index_allowed_actions]
 
     @staticmethod
-    def select_best_action(q_values):
-        return np.argmax(q_values)
+    def select_best_action(q_values, allowed_actions):
+        adjusted_q_values = [q_values[index] for index in allowed_actions]
+        selected_index_allowed_actions = np.argmax(adjusted_q_values)
+        return allowed_actions[selected_index_allowed_actions]
 
     @staticmethod
     def get_q_values(model, state):
